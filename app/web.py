@@ -9,6 +9,7 @@ from app.archive.appeal import issue
 from app.clearing import Clearing
 from app.curb.timeaxis import local
 from app.problems import DocketError,LABEL
+from app.ruling import groups,reconcile
 from app.setup import POLICY
 from app.source.packet import bundle
 
@@ -32,6 +33,7 @@ def screen(request:Request,screen:str='overview',sample:str='dirty',key:str|None
         raise DocketError('STAGE_BAD','没有这项清算工序',404)
     docket=request.app.state.docket
     signed=None
+    ruling_book=None
     if key:
         record=docket.require(key)
         report,meta=record['evidence'],record['manifest']
@@ -43,10 +45,14 @@ def screen(request:Request,screen:str='overview',sample:str='dirty',key:str|None
         clearing=Clearing(bundle(sample),docket.secret)
         report=jsonable_encoder(clearing.report())
         meta={'rule':POLICY,'survey':jsonable_encoder(vars(clearing.survey))}
+        if screen=='settlement':
+            stored=docket.rulings_for(sample)
+            ruling_book=jsonable_encoder({'disputes':groups(clearing.occupancy['disputes'],sample),
+                                          'reconciliation':reconcile(clearing,sample,stored)})
     stages=list(STEPS)
     index=stages.index(screen) if screen in stages else -1
     history=docket.manifests() if screen=='history' else []
     path=lambda page: str(request.url_for('screen',screen=page).include_query_params(sample=sample,**({'key':key} if key else {})))
     return views.get_template('desk.html').render(screen=screen,steps=STEPS,index=index,next_step=stages[index+1] if index<6 else None,
         previous=stages[index-1] if index>0 else None,path=path,key=key,sample=sample,report=report,meta=meta,
-        history=history,signed=signed,label=LABEL,local=local,yuan=yuan)
+        history=history,signed=signed,ruling_book=ruling_book,label=LABEL,local=local,yuan=yuan)

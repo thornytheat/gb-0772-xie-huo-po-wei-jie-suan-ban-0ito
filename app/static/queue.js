@@ -35,3 +35,24 @@ stayPicker?.addEventListener('change', () => {
     pane.hidden = pane.dataset.feeStop !== stayPicker.value;
   }
 });
+const rulingForm = document.querySelector('#ruling-form');
+rulingForm?.addEventListener('submit', async event => {
+  event.preventDefault();
+  const action = rulingForm.querySelector('button');
+  action.disabled = true;
+  note.hidden = false;
+  note.textContent = '正在提交裁定';
+  try {
+    const data = Object.fromEntries(new FormData(rulingForm));
+    data.sample = selector.value;
+    const response = await fetch('/api/rulings', {method:'POST', headers:{'Content-Type':'application/json'},
+      body:JSON.stringify(data)});
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.message || '裁定无法生效');
+    window.location.reload();
+  } catch (problem) {
+    note.textContent = problem.message || '裁定提交失败，请重试';
+  } finally {
+    action.disabled = false;
+  }
+});

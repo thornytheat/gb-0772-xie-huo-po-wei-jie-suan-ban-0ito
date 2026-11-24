@@ -4,14 +4,14 @@ from app.curb.timeaxis import LOCAL, M, span
 from app.setup import BASE_CENTS, FREE_MINUTES, TIER_LIMIT, UPGRADE_CENTS
 
 
-def price(stops,disputes):
+def price(stops,disputes,restored=None):
     by_car_day=Counter()
     free_by_stay=Counter()
     by_stay={r['stay']:[] for r in stops}
     ordered=sorted((when,s['berth'],s['stay'],s) for s in stops for when in span(s['start'],s['end']))
     for when,berth,key,s in ordered:
         day=when.astimezone(LOCAL).date().isoformat()
-        if (berth,when) in disputes:
+        if (berth,when) in disputes and (not restored or (berth,when,s['vehicle']) not in restored):
             code,cents=disputes[berth,when],0
         elif s['booking'] and when<s['booking']['end'] and free_by_stay[key]<FREE_MINUTES:
             free_by_stay[key]+=1

@@ -14,6 +14,7 @@
 | M5 应实收和泊位对账 | 查看逐单差价、游离回执与泊位容量 | `GET /api/cases/dirty/settlement` | `app/billing/settle.py` `app/billing/payments.py` | `tests/test_settlement.py` |
 | M6 批次留档复跑 | 原子落档、查历史及重放 | `POST /api/dockets` | `app/archive/docket.py` `app/archive/rerun.py` | `tests/test_docket.py` |
 | M7 理赔证据签发 | 签发并核验脱敏证据、摘要与勾稽 | `GET /api/export/{key}` | `app/archive/appeal.py` `app/archive/canonical.py` | `tests/test_appeal.py` |
+| M8 争议改判与补差 | 裁定争议组归属、级联放行、补差入账与对账 | `POST /api/rulings` `GET /api/rulings/{sample}` | `app/ruling.py` `app/archive/docket.py` | `tests/test_ruling.py` |
 
 ## 陷阱登记
 
@@ -34,6 +35,7 @@
 - 脏样检测源 27 = 格式可读 25 + 重复表头 1 + 列数隔离 1。可读 25 再扣车牌 1、范围与重复编号等 4，采信 20。
 - 应管 240 = 空闲 133 + 争议 7 + 首免 10 + 基础价 68 + 升级价 22。实收 2310 分 − 应收 2240 分 = 逐单差价 70 分，游离回执 140 分另列。
 - 归档键以规则版本和输入全摘要生成，留档提交为单事务。重复提交取原运行快照，原件变动产生不同记录。
+- 裁定以争议组（同泊位同原因连续分钟）为对象，同组只有一份生效：相反裁定得 409，同一裁定重试复用首次入账。恢复分钟按原时间轴位置参与首免与阶梯计数，争议单整单重算；补差 = 该单改判后应收 − 改判前应收，裁定当天入账，已交账单不改。同车后几单的阶梯上移只列示为口径影响，不补收。同车同刻在另一泊位的争议分钟级联放行，awards 唯一键阻止跨泊重复计费。勾稽：改判后应收 − 改判前应收 = 补差合计 + 口径影响合计。
 
 ## 已知边界
 

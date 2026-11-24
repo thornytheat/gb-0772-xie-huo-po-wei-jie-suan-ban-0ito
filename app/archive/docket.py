@@ -16,6 +16,9 @@ class Docket:
             database.executescript('''
                 CREATE TABLE IF NOT EXISTS settings(name TEXT PRIMARY KEY, value BLOB NOT NULL);
                 CREATE TABLE IF NOT EXISTS dockets(id TEXT PRIMARY KEY, content TEXT NOT NULL);
+                CREATE TABLE IF NOT EXISTS rulings(dispute_key TEXT PRIMARY KEY, content TEXT NOT NULL);
+                CREATE TABLE IF NOT EXISTS supplements(ruling_key TEXT PRIMARY KEY, content TEXT NOT NULL);
+                CREATE TABLE IF NOT EXISTS awards(minute_key TEXT PRIMARY KEY, dispute_key TEXT NOT NULL);
             ''')
             database.execute("INSERT OR IGNORE INTO settings VALUES ('pseudonym_key', ?)",(secrets.token_bytes(32),))
             self.secret=database.execute("SELECT value FROM settings WHERE name='pseudonym_key'").fetchone()[0]
@@ -47,3 +50,35 @@ class Docket:
         with self.connect() as db:
             return [json.loads(row[0]) for row in db.execute(
                 "SELECT json_extract(content,'$.manifest') FROM dockets ORDER BY rowid DESC LIMIT 100")]
+
+    def rule(self,ruling,supplement,awards):
+        content=serialize(ruling)
+        with closing(sqlite3.connect(self.path,timeout=15,isolation_level=None)) as db:
+            db.execute('BEGIN IMMEDIATE')
+            try:
+                inserted=db.execute('INSERT OR IGNORE INTO rulings VALUES (?,?)',
+                                    (ruling['dispute_key'],content)).rowcount==1
+                original=db.execute('SELECT content FROM rulings WHERE dispute_key=?',
+                                    (ruling['dispute_key'],)).fetchone()[0]
+                winner=json.loads(original)
+                if not inserted and (winner['vehicle'],winner['shift'])!=(ruling['vehicle'],ruling['shift']):
+                    raise DocketError('RULING_CONFLICT',f"该争议已有{winner['shift']}班生效裁定",409)
+                for key in awards:
+                    db.execute('INSERT OR IGNORE INTO awards VALUES (?,?)',(key,ruling['dispute_key']))
+                    holder=db.execute('SELECT dispute_key FROM awards WHERE minute_key=?',(key,)).fetchone()[0]
+                    if holder!=ruling['dispute_key']:
+                        raise DocketError('RULING_CONFLICT','同车同刻另一泊位已裁定计费，放行以避免多收',409)
+                db.execute('INSERT OR IGNORE INTO supplements VALUES (?,?)',
+                           (ruling['ruling_key'],serialize(supplement)))
+                posted=db.execute('SELECT content FROM supplements WHERE ruling_key=?',
+                                  (ruling['ruling_key'],)).fetchone()[0]
+                db.execute('COMMIT')
+            except BaseException:
+                db.execute('ROLLBACK')
+                raise
+        return winner,json.loads(posted),not inserted
+
+    def rulings_for(self,sample):
+        with self.connect() as db:
+            rows=db.execute('SELECT content FROM rulings ORDER BY rowid').fetchall()
+        return [ruling for (text,) in rows if (ruling:=json.loads(text))['sample']==sample]
